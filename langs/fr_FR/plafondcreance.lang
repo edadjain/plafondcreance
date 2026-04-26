@@ -1,0 +1,12 @@
+# Module PlafondCreance - Francais
+PlafondCreanceSetup = Configuration - Plafond de Creances
+PlafondCreanceConfig = Parametres du module
+PlafondCreanceExtraPlafond = Extrafield Plafond de credit (societe)
+PlafondCreanceExtraOverride = Extrafield Levee de verrou (boolean)
+PlafondCreanceWebhookUrl = URL du Webhook d'alerte
+PlafondCreanceWebhookSecret = Secret Token (HMAC SHA-256)
+PlafondCreanceCheckParent = Verifier l'encours de la societe mere (filiales)
+PlafondCreanceBloque = Validation bloquee : encours client (%s) a depasse le plafond autorise (%s).
+SelectExtrafield = Selectionner un extrafield
+PlafondCreanceModule = Plafond de Creances
+PlafondCreanceModuleDesc = Surveillance automatique de l'encours client et controle du plafond de credit

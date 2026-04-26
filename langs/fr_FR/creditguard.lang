@@ -1,0 +1,16 @@
+# French translations for CreditGuard module
+# Copyright (C) 2024 CreditGuard Module
+
+CreditGuard=CreditGuard
+CreditGuardDescription=Contrôle du plafond de crédit client
+SetupCreditGuard=Configuration CreditGuard
+Parameter=Paramètre
+Value=Valeur
+ExtraFieldPlafond=Extrafield Plafond de crédit
+ExtraFieldDeblocage=Extrafield Déblocage manuel
+WebhookURL=URL du Webhook
+AlertThreshold=Seuil d'alerte
+AlertThresholdHelp=Pourcentage à partir duquel une alerte est envoyée (défaut 80%)
+CreditGuardAlertMsg=Attention, l'encours dépasse %s%% du plafond autorisé
+CreditGuardBlockMsg=Validation bloquée : encours client dépasse le plafond autorisé
+CreditGuardForcedMsg=Validation forcée par déblocage manuel
