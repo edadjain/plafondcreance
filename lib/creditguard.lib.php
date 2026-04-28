@@ -1,5 +1,8 @@
 <?php
-/* Copyright (C) 2024 CreditGuard
+/* Copyright (C) 2024 Dolico Tech - www.dolico.tech
+ * Développeurs : BADOLO Edadjain <info@dolico.tech> / ZOUNGRANA Joel
+ * Support      : info@dolico.tech | Tel : +22671442089
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 3 of the License, or
@@ -196,4 +199,38 @@ function creditguard_send_webhook($url, array $payload)
     }
 
     return true;
+}
+
+/**
+ * Prépare les onglets de navigation des pages d'administration CreditGuard.
+ *
+ * @return array  Tableau des onglets Dolibarr (url, label, id)
+ */
+function creditguard_admin_prepare_head()
+{
+    global $langs;
+    $langs->load('creditguard@creditguard');
+
+    $h    = 0;
+    $head = array();
+
+    // Onglet Configuration
+    $head[$h][0] = dol_buildpath('/creditguard/admin/setup.php', 1);
+    $head[$h][1] = '<span class="fa fa-cog"></span> ' . $langs->trans('CreditGuardSetup');
+    $head[$h][2] = 'setup';
+    $h++;
+
+    // Onglet Manuel
+    $head[$h][0] = dol_buildpath('/creditguard/admin/manuel.php', 1);
+    $head[$h][1] = '<span class="fa fa-book"></span> ' . $langs->trans('CreditGuardManuel');
+    $head[$h][2] = 'manuel';
+    $h++;
+
+    // Onglet À propos
+    $head[$h][0] = dol_buildpath('/creditguard/admin/about.php', 1);
+    $head[$h][1] = '<span class="fa fa-info-circle"></span> ' . $langs->trans('About');
+    $head[$h][2] = 'about';
+    $h++;
+
+    return $head;
 }
