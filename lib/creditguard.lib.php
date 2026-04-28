@@ -1,215 +1,199 @@
 <?php
-/* Copyright (C) 2024 CreditGuard Module
- *
- * This program is free software: you can redistribute it and/or modify
+/* Copyright (C) 2024 CreditGuard
+ * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation; either version 3 of the License, or
  * (at your option) any later version.
  */
 
 /**
  * \file    lib/creditguard.lib.php
  * \ingroup creditguard
- * \brief   Fonctions utilitaires du module CreditGuard
+ * \brief   Fonctions métier CreditGuard
  */
 
 /**
  * Calcule l'encours total d'un tiers :
- *   Encours = Somme factures clients impayées TTC
- *           + Somme commandes clients validées non (ou partiellement) facturées TTC
+ *   = Somme des factures clients impayées TTC (solde restant dû)
+ *   + Somme des commandes clients validées non facturées TTC
  *
- * @param  DoliDB $db          Objet base de données
- * @param  int    $socid       Identifiant du tiers
- * @return float               Encours en devise de base, -1 en cas d'erreur
+ * @param  DoliDB  $db     Objet base de données Dolibarr
+ * @param  int     $socid  Identifiant du tiers (societe.rowid)
+ * @return float           Encours en devise, ou -1 en cas d'erreur SQL
  */
 function creditguard_get_encours($db, $socid)
 {
     $socid = (int) $socid;
     if ($socid <= 0) {
-        return -1;
+        return 0;
     }
 
     $encours = 0.0;
 
-    // -----------------------------------------------------------------------
-    // 1. Factures clients impayées (statut 1 = validée, 2 = partiellement payée)
-    //    On prend le restant dû TTC pour couvrir le cas des paiements partiels.
-    // -----------------------------------------------------------------------
-    $sql = "SELECT SUM(f.total_ttc - f.paye) AS montant_impaye";
+    // ------------------------------------------------------------------
+    // 1. Factures clients impayées : solde restant dû exact
+    //    Statuts : 1 = validée non payée, 2 = partiellement payée
+    //    Types   : 0 = standard, 1 = avoir déduit, 3 = acompte
+    //    On exclut les avoirs (type 2) qui viendraient en déduction
+    // ------------------------------------------------------------------
+    $sql = "SELECT SUM(f.total_ttc - COALESCE(p.montant_paye, 0)) AS impaye";
     $sql .= " FROM " . MAIN_DB_PREFIX . "facture AS f";
+    $sql .= " LEFT JOIN (";
+    $sql .= "   SELECT fk_facture, SUM(amount) AS montant_paye";
+    $sql .= "   FROM " . MAIN_DB_PREFIX . "paiement_facture";
+    $sql .= "   GROUP BY fk_facture";
+    $sql .= " ) AS p ON p.fk_facture = f.rowid";
     $sql .= " WHERE f.fk_soc = " . $socid;
     $sql .= " AND f.entity IN (" . getEntity('invoice') . ")";
-    $sql .= " AND f.type IN (0, 1, 3)"; // Facture standard, avoir à exclure (type 2), acompte
-    $sql .= " AND f.fk_statut IN (1, 2)"; // 1 = validée, 2 = partiellement payée
-    $sql .= " AND f.paye = 0"; // Pas entièrement payée
+    $sql .= " AND f.fk_statut IN (1, 2)";
+    $sql .= " AND f.paye = 0";
+    $sql .= " AND f.type NOT IN (2)"; // Exclure avoirs
 
-    // Recalcul exact via le solde restant dû
-    $sql2 = "SELECT SUM(f.total_ttc - COALESCE(psum.montant_paye, 0)) AS montant_impaye";
-    $sql2 .= " FROM " . MAIN_DB_PREFIX . "facture AS f";
-    $sql2 .= " LEFT JOIN (";
-    $sql2 .= "   SELECT fk_facture, SUM(amount) AS montant_paye";
-    $sql2 .= "   FROM " . MAIN_DB_PREFIX . "paiement_facture";
-    $sql2 .= "   GROUP BY fk_facture";
-    $sql2 .= " ) AS psum ON psum.fk_facture = f.rowid";
-    $sql2 .= " WHERE f.fk_soc = " . $socid;
-    $sql2 .= " AND f.entity IN (" . getEntity('invoice') . ")";
-    $sql2 .= " AND f.type NOT IN (2)"; // Exclure les avoirs
-    $sql2 .= " AND f.fk_statut IN (1, 2)"; // Validées ou partiellement payées
-    $sql2 .= " AND f.paye = 0"; // Non soldées
-
-    $resql = $db->query($sql2);
-    if (!$resql) {
-        dol_syslog('creditguard_get_encours: Erreur requête factures - ' . $db->lasterror(), LOG_ERR);
+    $res = $db->query($sql);
+    if (!$res) {
+        dol_syslog('CreditGuard::creditguard_get_encours factures KO ' . $db->lasterror(), LOG_ERR);
         return -1;
     }
-    $obj = $db->fetch_object($resql);
-    $encours += (float) ($obj->montant_impaye ?? 0);
-    $db->free($resql);
+    $row = $db->fetch_object($res);
+    $encours += (float) ($row->impaye ?? 0);
+    $db->free($res);
 
-    // -----------------------------------------------------------------------
+    // ------------------------------------------------------------------
     // 2. Commandes clients validées, non entièrement facturées
-    //    Statuts commande : 1 = validée, 2 = en cours de traitement
-    //    On prend la partie non encore facturée (total_ttc - montant déjà facturé)
-    // -----------------------------------------------------------------------
-    $sql3 = "SELECT SUM(c.total_ttc - COALESCE(fsum.montant_facture, 0)) AS montant_non_facture";
-    $sql3 .= " FROM " . MAIN_DB_PREFIX . "commande AS c";
-    $sql3 .= " LEFT JOIN (";
-    $sql3 .= "   SELECT fk_commande, SUM(f2.total_ttc) AS montant_facture";
-    $sql3 .= "   FROM " . MAIN_DB_PREFIX . "element_element AS ee";
-    $sql3 .= "   JOIN " . MAIN_DB_PREFIX . "facture AS f2 ON f2.rowid = ee.fk_target";
-    $sql3 .= "     AND ee.targettype = 'facture'";
-    $sql3 .= "     AND f2.fk_statut IN (1, 2)"; // Factures validées ou partiellement payées
-    $sql3 .= "     AND f2.type NOT IN (2)"; // Pas d'avoirs
-    $sql3 .= "   WHERE ee.sourcetype = 'commande'";
-    $sql3 .= "   GROUP BY fk_commande";
-    $sql3 .= " ) AS fsum ON fsum.fk_commande = c.rowid";
-    $sql3 .= " WHERE c.fk_soc = " . $socid;
-    $sql3 .= " AND c.entity IN (" . getEntity('order') . ")";
-    $sql3 .= " AND c.fk_statut IN (1, 2)"; // Validée ou en cours
-    $sql3 .= " AND c.facture = 0"; // Non entièrement facturée
+    //    Statuts commande : 1 = validée, 2 = en cours de livraison
+    //    facture = 0 : non soldée (pas entièrement facturée)
+    //    On déduit la part déjà facturée pour éviter le double-comptage
+    // ------------------------------------------------------------------
+    $sql2 = "SELECT SUM(c.total_ttc - COALESCE(fac.deja_facture, 0)) AS non_facture";
+    $sql2 .= " FROM " . MAIN_DB_PREFIX . "commande AS c";
+    $sql2 .= " LEFT JOIN (";
+    $sql2 .= "   SELECT ee.fk_source AS fk_commande, SUM(f2.total_ttc) AS deja_facture";
+    $sql2 .= "   FROM " . MAIN_DB_PREFIX . "element_element AS ee";
+    $sql2 .= "   INNER JOIN " . MAIN_DB_PREFIX . "facture AS f2 ON f2.rowid = ee.fk_target";
+    $sql2 .= "     AND ee.targettype = 'facture'";
+    $sql2 .= "     AND f2.fk_statut IN (1, 2)";
+    $sql2 .= "     AND f2.paye = 0";
+    $sql2 .= "     AND f2.type NOT IN (2)";
+    $sql2 .= "   WHERE ee.sourcetype = 'commande'";
+    $sql2 .= "   GROUP BY ee.fk_source";
+    $sql2 .= " ) AS fac ON fac.fk_commande = c.rowid";
+    $sql2 .= " WHERE c.fk_soc = " . $socid;
+    $sql2 .= " AND c.entity IN (" . getEntity('order') . ")";
+    $sql2 .= " AND c.fk_statut IN (1, 2)";
+    $sql2 .= " AND c.facture = 0";
 
-    $resql3 = $db->query($sql3);
-    if (!$resql3) {
-        dol_syslog('creditguard_get_encours: Erreur requête commandes - ' . $db->lasterror(), LOG_ERR);
+    $res2 = $db->query($sql2);
+    if (!$res2) {
+        dol_syslog('CreditGuard::creditguard_get_encours commandes KO ' . $db->lasterror(), LOG_ERR);
         return -1;
     }
-    $obj3 = $db->fetch_object($resql3);
-    $montant_non_facture = (float) ($obj3->montant_non_facture ?? 0);
-    // On ne prend pas les valeurs négatives (sur-facturation possible)
-    if ($montant_non_facture > 0) {
-        $encours += $montant_non_facture;
+    $row2 = $db->fetch_object($res2);
+    $non_facture = (float) ($row2->non_facture ?? 0);
+    if ($non_facture > 0) {
+        $encours += $non_facture;
     }
-    $db->free($resql3);
+    $db->free($res2);
 
     return round($encours, 2);
 }
 
 /**
- * Envoie une notification JSON vers le webhook configuré.
+ * Lit le plafond de crédit d'un tiers depuis son extrafield.
  *
- * @param  string $webhook_url  URL du webhook
- * @param  array  $payload      Données à envoyer
- * @return bool                 true si succès HTTP (2xx), false sinon
+ * @param  DoliDB  $db          Objet base de données
+ * @param  int     $socid       Identifiant du tiers
+ * @param  string  $extrafield  Nom du champ extra (sans préfixe "options_")
+ * @return float                Plafond (0 = pas de contrôle)
  */
-function creditguard_send_webhook($webhook_url, array $payload)
+function creditguard_get_plafond($db, $socid, $extrafield)
 {
-    if (empty($webhook_url) || !filter_var($webhook_url, FILTER_VALIDATE_URL)) {
-        dol_syslog('creditguard_send_webhook: URL invalide ou vide', LOG_WARNING);
+    $socid      = (int) $socid;
+    $extrafield = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $extrafield);
+
+    if ($socid <= 0 || $extrafield === '') {
+        return 0;
+    }
+
+    $sql = "SELECT " . $extrafield . " AS plafond";
+    $sql .= " FROM " . MAIN_DB_PREFIX . "societe_extrafields";
+    $sql .= " WHERE fk_object = " . $socid;
+
+    $res = $db->query($sql);
+    if (!$res) {
+        dol_syslog('CreditGuard::creditguard_get_plafond KO ' . $db->lasterror(), LOG_ERR);
+        return 0;
+    }
+    $row = $db->fetch_object($res);
+    $db->free($res);
+
+    return (float) ($row->plafond ?? 0);
+}
+
+/**
+ * Vérifie si le déblocage manuel est actif pour un tiers.
+ *
+ * @param  DoliDB  $db          Objet base de données
+ * @param  int     $socid       Identifiant du tiers
+ * @param  string  $extrafield  Nom du champ extra booléen
+ * @return bool
+ */
+function creditguard_is_deblocage_actif($db, $socid, $extrafield)
+{
+    $socid      = (int) $socid;
+    $extrafield = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $extrafield);
+
+    if ($socid <= 0 || $extrafield === '') {
+        return false;
+    }
+
+    $sql = "SELECT " . $extrafield . " AS deblocage";
+    $sql .= " FROM " . MAIN_DB_PREFIX . "societe_extrafields";
+    $sql .= " WHERE fk_object = " . $socid;
+
+    $res = $db->query($sql);
+    if (!$res) {
+        dol_syslog('CreditGuard::creditguard_is_deblocage_actif KO ' . $db->lasterror(), LOG_ERR);
+        return false;
+    }
+    $row = $db->fetch_object($res);
+    $db->free($res);
+
+    return !empty($row->deblocage) && (int) $row->deblocage === 1;
+}
+
+/**
+ * Envoie une requête POST JSON vers le webhook configuré.
+ * L'échec n'est jamais bloquant.
+ *
+ * @param  string  $url      URL du webhook
+ * @param  array   $payload  Données à envoyer
+ * @return bool
+ */
+function creditguard_send_webhook($url, array $payload)
+{
+    if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+        dol_syslog('CreditGuard::creditguard_send_webhook URL invalide : ' . $url, LOG_WARNING);
         return false;
     }
 
     $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-    $context = stream_context_create(array(
+    $ctx = stream_context_create(array(
         'http' => array(
             'method'        => 'POST',
             'header'        => "Content-Type: application/json\r\nContent-Length: " . strlen($json) . "\r\n",
             'content'       => $json,
-            'timeout'       => 5, // secondes
+            'timeout'       => 5,
             'ignore_errors' => true,
         ),
     ));
 
-    $result = @file_get_contents($webhook_url, false, $context);
+    $result = @file_get_contents($url, false, $ctx);
 
     if ($result === false) {
-        dol_syslog('creditguard_send_webhook: Échec de l\'envoi vers ' . $webhook_url, LOG_WARNING);
+        dol_syslog('CreditGuard::creditguard_send_webhook échec envoi vers ' . $url, LOG_WARNING);
         return false;
-    }
-
-    // Vérifier le code HTTP de la réponse
-    if (isset($http_response_header[0])) {
-        preg_match('/HTTP\/\d\.\d\s+(\d+)/', $http_response_header[0], $matches);
-        $httpCode = isset($matches[1]) ? (int) $matches[1] : 0;
-        if ($httpCode < 200 || $httpCode >= 300) {
-            dol_syslog('creditguard_send_webhook: Code HTTP ' . $httpCode . ' reçu', LOG_WARNING);
-            return false;
-        }
     }
 
     return true;
-}
-
-/**
- * Retourne le plafond de crédit d'un tiers depuis son extrafield.
- *
- * @param  DoliDB  $db           Objet base de données
- * @param  int     $socid        Identifiant du tiers
- * @param  string  $extrafield   Nom du champ extra (sans le préfixe "options_")
- * @return float                 Plafond (0 = pas de contrôle)
- */
-function creditguard_get_plafond($db, $socid, $extrafield)
-{
-    $socid     = (int) $socid;
-    $extrafield = preg_replace('/[^a-zA-Z0-9_]/', '', $extrafield); // Sécurisation
-
-    if ($socid <= 0 || empty($extrafield)) {
-        return 0;
-    }
-
-    $sql = "SELECT " . $db->sanitize($extrafield) . " AS plafond";
-    $sql .= " FROM " . MAIN_DB_PREFIX . "societe_extrafields";
-    $sql .= " WHERE fk_object = " . $socid;
-
-    $resql = $db->query($sql);
-    if (!$resql) {
-        dol_syslog('creditguard_get_plafond: Erreur - ' . $db->lasterror(), LOG_ERR);
-        return 0;
-    }
-    $obj = $db->fetch_object($resql);
-    $db->free($resql);
-
-    return (float) ($obj->plafond ?? 0);
-}
-
-/**
- * Vérifie si le déblocage manuel est activé pour un tiers.
- *
- * @param  DoliDB  $db           Objet base de données
- * @param  int     $socid        Identifiant du tiers
- * @param  string  $extrafield   Nom du champ extra booléen
- * @return bool
- */
-function creditguard_is_deblocage_actif($db, $socid, $extrafield)
-{
-    $socid     = (int) $socid;
-    $extrafield = preg_replace('/[^a-zA-Z0-9_]/', '', $extrafield);
-
-    if ($socid <= 0 || empty($extrafield)) {
-        return false;
-    }
-
-    $sql = "SELECT " . $db->sanitize($extrafield) . " AS deblocage";
-    $sql .= " FROM " . MAIN_DB_PREFIX . "societe_extrafields";
-    $sql .= " WHERE fk_object = " . $socid;
-
-    $resql = $db->query($sql);
-    if (!$resql) {
-        dol_syslog('creditguard_is_deblocage_actif: Erreur - ' . $db->lasterror(), LOG_ERR);
-        return false;
-    }
-    $obj = $db->fetch_object($resql);
-    $db->free($resql);
-
-    return !empty($obj->deblocage) && $obj->deblocage == 1;
 }
