@@ -1,0 +1,43 @@
+# Module CreditGuard - Traductions françaises
+# Copyright (C) 2024 Dolico Tech - www.dolico.tech
+
+CreditGuard=CreditGuard
+CreditGuardDescription=Surveillance de l'encours client et contrôle du plafond de crédit
+
+# Onglets
+CreditGuardSetup=Configuration
+CreditGuardManuel=Manuel
+About=À propos
+
+# Paramètres de configuration
+CreditGuardParamPlafond=Extrafield "Plafond de crédit"
+CreditGuardParamPlafondHelp=Nom du champ extra de type Prix ou Nombre décimal sur la fiche Tiers (ex : plafond_credit)
+CreditGuardParamDeblocage=Extrafield "Déblocage manuel"
+CreditGuardParamDeblocageHelp=Nom du champ extra de type Checkbox sur la fiche Tiers. Laisser vide pour désactiver.
+CreditGuardParamSeuil=Seuil d'alerte (%)
+CreditGuardParamSeuilHelp=Pourcentage d'encours à partir duquel une alerte non bloquante est envoyée (défaut : 80)
+CreditGuardParamWebhook=URL du Webhook
+CreditGuardParamWebhookHelp=Endpoint HTTP(S) recevant les alertes JSON. Laisser vide pour désactiver.
+
+# Messages d'erreur de validation
+CreditGuardErrorPlafondRequired=Le nom de l'extrafield "Plafond" est obligatoire.
+CreditGuardErrorWebhookInvalid=L'URL du webhook n'est pas valide (doit commencer par http:// ou https://).
+CreditGuardErrorSeuilRange=Le seuil d'alerte doit être compris entre 1 et 99 %.
+
+# Récapitulatif logique
+CreditGuardLogicSummary=Récapitulatif du comportement CreditGuard
+CreditGuardActionPass=Aucun contrôle, validation autorisée
+CreditGuardActionAlert=Alerte (non bloquant) + notification webhook
+CreditGuardActionBlock=Validation BLOQUÉE + message d'erreur
+CreditGuardActionForce=Validé par déblocage manuel + log d'audit
+
+# Outil de test
+CreditGuardTestTool=Outil de test — Calculer l'encours d'un tiers
+CreditGuardEncours=Encours calculé
+CreditGuardPlafond=Plafond configuré
+CreditGuardDeblocage=Déblocage manuel actif
+
+# Divers
+SelectExtrafield=Choisir dans la liste
+IDThirdParty=ID du tiers
+Compute=Calculer

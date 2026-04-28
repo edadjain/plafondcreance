@@ -1,0 +1,43 @@
+# Module CreditGuard - English translations
+# Copyright (C) 2024 Dolico Tech - www.dolico.tech
+
+CreditGuard=CreditGuard
+CreditGuardDescription=Customer credit exposure monitoring and credit limit control
+
+# Tabs
+CreditGuardSetup=Configuration
+CreditGuardManuel=Manual
+About=About
+
+# Configuration parameters
+CreditGuardParamPlafond=Extrafield "Credit Limit"
+CreditGuardParamPlafondHelp=Name of the Price or Decimal extra field on the Third-Party record (e.g. plafond_credit)
+CreditGuardParamDeblocage=Extrafield "Manual Override"
+CreditGuardParamDeblocageHelp=Name of the Checkbox extra field on the Third-Party record. Leave blank to disable.
+CreditGuardParamSeuil=Alert threshold (%)
+CreditGuardParamSeuilHelp=Exposure percentage that triggers a non-blocking alert (default: 80)
+CreditGuardParamWebhook=Webhook URL
+CreditGuardParamWebhookHelp=HTTP(S) endpoint receiving JSON alerts. Leave blank to disable.
+
+# Validation error messages
+CreditGuardErrorPlafondRequired=The "Credit Limit" extrafield name is required.
+CreditGuardErrorWebhookInvalid=The webhook URL is not valid (must start with http:// or https://).
+CreditGuardErrorSeuilRange=The alert threshold must be between 1 and 99 %.
+
+# Logic summary
+CreditGuardLogicSummary=CreditGuard behaviour summary
+CreditGuardActionPass=No check — validation allowed
+CreditGuardActionAlert=Alert (non-blocking) + webhook notification
+CreditGuardActionBlock=Validation BLOCKED + error message
+CreditGuardActionForce=Forced through manual override + audit log
+
+# Test tool
+CreditGuardTestTool=Test tool — Compute exposure for a third-party
+CreditGuardEncours=Computed exposure
+CreditGuardPlafond=Configured limit
+CreditGuardDeblocage=Manual override active
+
+# Misc
+SelectExtrafield=Select from list
+IDThirdParty=Third-party ID
+Compute=Compute
